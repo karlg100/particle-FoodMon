@@ -55,11 +55,11 @@ class Probe {
         Probe(int probeId, int dTemp);
 //        void sample();
         void sample(float tmpTemp);
-	    int getID();
-	    float getRawTemp();
-	    float getTemp();
-	    bool present();
-	    void setHighAlarm(int level);
+        int getID();
+        float getRawTemp();
+        float getTemp();
+        bool present();
+        void setHighAlarm(int level);
         int getHighAlarm();
         void setLowAlarm(int level);
         int getLowAlarm();

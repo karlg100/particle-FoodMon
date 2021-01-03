@@ -1,29 +1,20 @@
 #include "application.h"
 #include <math.h>
 
-// This #include statement was automatically added by the Particle IDE.
 #include <Adafruit_LiquidCrystal.h>
 
-// This #include statement was automatically added by the Particle IDE.
 #include <OneWire.h>
 
-// This #include statement was automatically added by the Particle IDE.
 #include "spark-dallas-temperature.h"
 
-// This #include statement was automatically added by the Particle IDE.
 #include <blynk.h>
 
-// This #include statement was automatically added by the Particle IDE.
+// Local Libraries
 #include "WifiMeter.h"
-
-// This #include statement was automatically added by the Particle IDE.
 #include "CountdownTimer.h"
-
-// This #include statement was automatically added by the Particle IDE.
 #include "Probe.h"
 
 //SYSTEM_MODE(SEMI_AUTOMATIC)
-
 
 // faster startup time for the LCD
 //SYSTEM_MODE(MANUAL);
@@ -101,18 +92,19 @@ LiquidCrystal *lcd;  // LCD I2C
 Probe *p1;
 Probe *p2;
 Probe *p3;
+Probe *p4;
 
 // Deg F icon
 
 byte degF[8] = {
-	0b11000,
-	0b11000,
-	0b00000,
-	0b00111,
-	0b00100,
-	0b00110,
-	0b00100,
-	0b00100
+    0b11000,
+    0b11000,
+    0b00000,
+    0b00111,
+    0b00100,
+    0b00110,
+    0b00100,
+    0b00100
 };
 
 void regDegFIcon() {
@@ -142,6 +134,7 @@ BLYNK_CONNECTED() // runs every time Blynk connection is established
 
 BLYNK_DISCONNECTED() // runs every time Blynk connection is established
 {
+
 }
 
 
@@ -195,7 +188,7 @@ void serialDebug2() {
 unsigned long blkNextAlarm = 0;
 unsigned long buzNextAlarm = 0;
 
-void blynkNotify(Probe *p, char msg[255]) {
+void blynkNotify(char probe[255], char msg[255]) {
     if (Blynk.connected() && millis() > blkNextAlarm) {
         Blynk.notify(msg);
         Particle.publish(msg);
@@ -210,15 +203,15 @@ void blynkNotify(Probe *p, char msg[255]) {
 void checkAlarmStates() {
     bool alarming = FALSE;
     if (p1->fetchAlarm()) {
-         if (Blynk.connected()) blynkNotify(p1, "Kitchen: Probe 1 is alarming");
+         if (Blynk.connected()) blynkNotify("Probe 1", "Kitchen: Probe 1 is alarming");
         alarming = TRUE;
     }
     if (p2->fetchAlarm()) {
-        if (Blynk.connected()) blynkNotify(p2, "Kitchen: Probe 2 is alarming");
+        if (Blynk.connected()) blynkNotify("Probe 2", "Kitchen: Probe 2 is alarming");
         alarming = TRUE;
     }
     if (p3->fetchAlarm()) {
-        if (Blynk.connected()) blynkNotify(p3, "Kitchen:Probe 3 is alarming");
+        if (Blynk.connected()) blynkNotify("Probe 3", "Kitchen: Probe 3 is alarming");
         alarming = TRUE;
     }
     if (!alarming) {
@@ -309,13 +302,22 @@ void lcdReadOut() {
     }
     switch (probeScreen) {
         case (1):
-            lcdProbeScreen(1, p1);
+            if (forceRead || p1->present())
+                lcdProbeScreen(1, p1);
+            else
+                LCDTimer->reset();
             break;
         case (2):
-            lcdProbeScreen(2, p2);
+            if (forceRead || p2->present())
+                lcdProbeScreen(2, p2);
+            else
+                LCDTimer->reset();
             break;
         case (3):
-            lcdProbeScreen(3, p3);
+            if (forceRead || p3->present())
+                lcdProbeScreen(3, p3);
+            else
+                LCDTimer->reset();
             break;
         case (0):
             lcd->setCursor(0, 0);
@@ -509,7 +511,7 @@ void setup() {
     lcd->setCursor(14, 1);
     lcd->print(" ");
 
-    // start reading probes
+    // start https://build.particle.io/build/585ecd976d38419b0f0004aa#flashreading probes
     //lcd->setCursor(14, 1);
     //lcd->print("t");
     //probesTimer.start();
@@ -521,7 +523,7 @@ void setup() {
     LCDTimer = new LCDTimerAnim(lcd, TIMER, 15, 1);
     lcd->clear();
     lcdTimer.start();
-    lcdMeterTimer.start();
+    //lcdMeterTimer.start();
     Time.zone(-4);                   // Eastern Time Zone
     Particle.function("safeMode", safeMode);
 
@@ -535,7 +537,7 @@ void setup() {
     pinMode(D7, OUTPUT);
     digitalWrite(D7, HIGH);
     Blynk.begin(auth);
-    //blynkRunTimer.start();
+    //blynkRunTimer.start(); 
     //blynkTimer.start();
     //lcd->setCursor(14, 1);
     //lcd->print(" ");
@@ -551,16 +553,19 @@ void setup() {
 void loop() {
     //if (Blynk.connected())
 
-    pollProbes();
+//    pollProbes();
     //lcdReadOut();
 
-    if (Blynk.connected()) blynkUpdate();
-    Blynk.run();
+    if (Blynk.connected()) 
 
     if (Blynk.connected()) {
         digitalWrite(D7, LOW);
+        blynkUpdate();
     } else
         digitalWrite(D7, HIGH);
+
+    Blynk.run();
+
 
     //serialDebug();
 
