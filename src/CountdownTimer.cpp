@@ -47,11 +47,11 @@ bool LCDTimerAnim::runTimer() {
             break;
         case 7:
             lcd->createChar(charSlot, Timer10);
-            sleep = 500;
+            sleep = 100;
             break;
         case 8:
             lcd->createChar(charSlot, Timer11);
-            sleep = 250;
+            sleep = 100;
             break;
         case 9:
             lcd->createChar(charSlot, Timer12);

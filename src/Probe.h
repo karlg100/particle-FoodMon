@@ -6,34 +6,18 @@
 #define ALARM_ERROR 0x08
 */
 
+#include <inttypes.h>
+#include <DallasTemperature.h>
+
 class Probe {
     private:
         int id;
-        //char name[10];
+        DallasTemperature *dh;
+        uint8_t pinAddress = 0;
+        uint8_t probeIndex = 0;
 
-        bool connected = false;
-        int conCount = 10;
-        volatile float calTemp = 0;   // our readings
-        volatile float rawTemp = 0;   // our readings
-
-        // Disconnected float
-        float disTemp =32;
-
-        // Calibration data (all in F)
-        float refLow = 32.9;                // low reference temp
-        float refHigh = 212;                // high reference temp
-        float refRange = refHigh-refLow;    // calculate the reference range - ref high minus low
-
-        // probe calibraiton info
-        // 1 - oven probe 1 (needle)
-        // 1 - oven probe 2 (needle)
-        // 1 - probe 3 (blunt end)
-        // 1 - probe 4 (blunt end)
-
-        int probeIndex = 0;
-        float probeLow[10] = { };
-        float probeHigh[10] = { };
-        float probeRange[10] = { };
+        volatile double F = DEVICE_DISCONNECTED_F;   // our readings
+        volatile double C = DEVICE_DISCONNECTED_C;   // our readings
 
         // Alarm tracking variables
         volatile int highAlarm = 100;
@@ -44,26 +28,24 @@ class Probe {
 
         int alarmCount = 0;
         int alarmThresh = 1;
-        unsigned long lastAlarmTime = 0;
+        size_t lastAlarmTime = 0;
 
-        //Probe *nextProbe;
-        //DallasTemperature *dallas;
-
+        void setDeviceIndexByPinAddress(int probePinAddress);
+        
     public:
-
-//        Probe(int probeId, DallasTemperature *dh);
-        Probe(int probeId, int dTemp);
-//        void sample();
-        void sample(float tmpTemp);
+        Probe(DallasTemperature *dhIn, int newID, int probePinAddress);
+        void sample();
+        void setID(int newID);
         int getID();
-        float getRawTemp();
-        float getTemp();
+        void setProbeIndexFromPinAddress();
+        void setProbeIndex(int index);
+        double getTemp();
+        double getTempC();
         bool present();
         void setHighAlarm(int level);
         int getHighAlarm();
         void setLowAlarm(int level);
         int getLowAlarm();
-        void setProbeIndex(int index);
         bool fetchAlarm();
         bool alarming();
         bool highAlarming();

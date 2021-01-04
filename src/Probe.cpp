@@ -1,76 +1,56 @@
 #include "Probe.h"
 #include "application.h"
-#include "spark-dallas-temperature.h"
+//include "DallasTemperature.h"
 #include <math.h>
 // This #include statement was automatically added by the Particle IDE.
 //#include <spark-dallas-temperature.h>
 
-Probe::Probe(int probeId, int dTemp) {
-    id = probeId;
-    disTemp = dTemp;
-
-    // set calibration data for each probe
-    probeLow[1] = 44.4;              // what did you read thru the probe?
-    probeHigh[1] = 213.0;             // what did you read thru the probe?
-    probeRange[1] = probeHigh[1] - probeLow[1]; // calculated probe range
-
-    probeLow[2] = 44.4;              // what did you read thru the probe?
-    probeHigh[2] = 213.0;             // what did you read thru the probe?
-    probeRange[2] = probeHigh[2] - probeLow[2]; // calculated probe range
-
-    probeLow[3] = 32.0;              // what did you read thru the probe?
-    probeHigh[3] = 210.0;             // what did you read thru the probe?
-    probeRange[3] = probeHigh[3] - probeLow[3]; // calculated probe range
-
-    probeLow[4] = 32.0;              // what did you read thru the probe?
-    probeHigh[4] = 212.0;             // what did you read thru the probe?
-    probeRange[4] = probeHigh[4] - probeLow[4]; // calculated probe range
-
-    //float probeRange = 190.35;       // high read temp - what did you read using the probe?
+Probe::Probe(DallasTemperature *dhIn, int newID, int probePinAddress) {
+    pinAddress = probePinAddress;
+    id = newID;
+    dh = dhIn;
+    setDeviceIndexByPinAddress(probePinAddress);
 }
 
-void Probe::sample(float tmpTemp) {
-    //float tmpTemp = dh->getTempFByIndex(id);
-    //Serial.print("probe ");
-    //Serial.print(id);
-    //Serial.print(" - temp ");
-    //Serial.println(tmpTemp);
-//    if ( tmpTemp == DEVICE_DISCONNECTED_F) {
-    if ( tmpTemp == DEVICE_DISCONNECTED_F) {                                            // disconnected
-        connected = false;
-//        rawTemp = NAN;
-//        calTemp = NAN;
-        conCount++;
-    } else if (floor(tmpTemp) == 32 || floor(tmpTemp*100) == floor(disTemp*100) ) {     // bogus reading
-        conCount++;
-    } else {
-        rawTemp = tmpTemp;
-//        if (probeIndex == 0)
-            calTemp = rawTemp;
-//        else
-//            calTemp = (((rawTemp - probeLow[probeIndex]) * refRange) / probeRange[probeIndex]) + refLow;
-        connected = true;
-        conCount=0;
-    }
+void Probe::setDeviceIndexByPinAddress(int probePinAddress) {
+    for (uint8_t s=0; s < dh->getDeviceCount(); s++)
+        if (dh->getAddressPinsByIndex(s) == probePinAddress) {
+            setProbeIndex(s);
+            break;
+        }
+
+}
+
+void Probe::sample() {
+    C = dh->getTempCByIndex(probeIndex);
+    F = dh->getTempFByIndex(probeIndex);
 }
 
 int Probe::getID() {
     return id;
 }
 
-float Probe::getRawTemp() {
-    return rawTemp;
+void Probe::setID(int newID) {
+    id = newID;
 }
 
-float Probe::getTemp() {
-    return calTemp;
+void Probe::setProbeIndex(int index) {
+    probeIndex = index;
+}
+
+double Probe::getTemp() {
+    return F;
+}
+
+double Probe::getTempC() {
+    return C;
 }
 
 bool Probe::present() {
-    if (conCount >= 0 && conCount < 10)
-        return true;
+    if ( C == DEVICE_DISCONNECTED_C || C == DEVICE_FAULT_OPEN_C || C == DEVICE_FAULT_SHORTGND_C || C == DEVICE_FAULT_SHORTVDD_C)
+        return false;
     else
-        return connected;
+        return true;
 }
 
 void Probe::setHighAlarm(int level) {
@@ -89,26 +69,21 @@ int Probe::getLowAlarm() {
     return lowAlarm;
 }
 
-void Probe::setProbeIndex(int index) {
-    probeIndex = index;
-//    Particle.publish("probeIndex", probeIndex);
-}
-
 bool Probe::fetchAlarm() {
-    if (!connected) {
+    if (!present()) {
         highAlarmActive = FALSE;
         lowAlarmActive = FALSE;
         return FALSE;
     }
 
     // add up flags
-    if (calTemp > highAlarm) {
+    if (F > highAlarm) {
         highAlarmActive = TRUE;
     } else {
         highAlarmActive = FALSE;
     }
     
-    if (calTemp < lowAlarm) {
+    if (F < lowAlarm) {
         lowAlarmActive = TRUE;
     } else {
         lowAlarmActive = FALSE;

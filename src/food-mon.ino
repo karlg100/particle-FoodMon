@@ -1,19 +1,22 @@
-#include "application.h"
+
+#include <application.h>
 #include <math.h>
-
 #include <Adafruit_LiquidCrystal.h>
-
 #include <OneWire.h>
-
-#include "spark-dallas-temperature.h"
-
 #include <blynk.h>
 
-// Local Libraries
+////
+/// Local Libraries
+//
+#include "DallasTemperature.h""
+#include "BlynkSetup.h"
 #include "WifiMeter.h"
 #include "CountdownTimer.h"
 #include "Probe.h"
 
+////
+/// System Configuration
+//
 //SYSTEM_MODE(SEMI_AUTOMATIC)
 
 // faster startup time for the LCD
@@ -21,64 +24,74 @@
 //SYSTEM_MODE(SEMI_AUTOMATIC);
 //SYSTEM_THREAD(DISABLED);
 
-// are we OTA flashing?
-bool flashPrep = false;
-
 // Setup an app watchdog to reset if loop hangs
 ApplicationWatchdog wd(120000, System.reset);
 
+
+////
+/// Init Device Libs
+//
+// Init Dallas on pin D4
+OneWire oneWire(D4);
+DallasTemperature dallas(&oneWire);
+
+// OTA flash flag
+bool flashPrep = false;
+
+// Alarm Params
 #define ALARM_SLEEP 600000
 #define BUZZER_SLEEP 60000
-
 #define BUZZER A5
 
 
-// map the sensor numbers to the OneWire bus ID
-#define S0 1
-#define S1 0
-#define S2 2
+////
+/// Setup the probes
+//
 
-// blynk mapping
-#define S1B         V1
-#define S1B_LA_O    V11
-#define S1B_HA_O    V21
-#define S1B_C_O     V31
-#define S1B_LA_I    V41
-#define S1B_HA_I    V51
-#define S1B_INDEX   V61
-#define S2B         V2
-#define S2B_LA_O    V12
-#define S2B_HA_O    V22
-#define S2B_C_O     V32
-#define S2B_LA_I    V42
-#define S2B_HA_I    V52
-#define S2B_INDEX   V62
-#define S3B         V3
-#define S3B_LA_O    V13
-#define S3B_HA_O    V23
-#define S3B_C_O     V33
-#define S3B_LA_I    V43
-#define S3B_HA_I    V53
-#define S3B_INDEX   V63
+// The "A" address pins can be set to map the hardware in a speicfic order. Set the vaules of SA* to the order of the A addresses
+// The rest will be discovered. (should be in order from 0-3, unelss you didn't install them in the right order on your board)
+
+#define MAX_DEVICES 16
+
+const int SA[] = {
+                    0,
+                    1,
+                    3,
+                    2,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1
+                };
+
+
+////
+/// LCD related macros
+//
 
 // LCD Pin (data and clk +1)
-#define LCDPIN 0
+#define LCDPIN D0
 
 // define special LCD chars.  We only have 8 slots!
 #define WIFIICON 0
 #define TIMER 1
 #define DEGF 6
 
-// Init Dallas on pin digital pin 3
-OneWire oneWire(D4);
-//DallasTemperature dallas(&oneWire);
-DallasTemperature dallas(&oneWire);
-//DallasTemperature dallas(new oneWire(D4));
-DeviceAddress addr;
-
 // Wifi Meter
 WifiMeter *wifiMtr;
 LCDTimerAnim *LCDTimer;
+
+////
+/// Blynk Config
+//
 
 // Blynk Auth Token
 // Food Mon box
@@ -89,13 +102,10 @@ bool isFirstConnect = TRUE;
 LiquidCrystal *lcd;  // LCD I2C
 
 // define our probes
-Probe *p1;
-Probe *p2;
-Probe *p3;
-Probe *p4;
+
+Probe *p[15];
 
 // Deg F icon
-
 byte degF[8] = {
     0b11000,
     0b11000,
@@ -112,6 +122,21 @@ void regDegFIcon() {
 }
 
 
+////
+/// Blynk Functions
+//
+
+/// NFR Move to blynk include
+BLYNK_CONNECTED() // runs every time Blynk connection is established
+{
+    Blynk.syncAll();
+}
+
+BLYNK_DISCONNECTED() // runs every time Blynk connection is established
+{
+
+}
+
 // sound sequence for buzzer alarm
 void soundAlarm() {
     digitalWrite(BUZZER, HIGH);
@@ -127,18 +152,9 @@ void soundAlarm() {
     digitalWrite(BUZZER, LOW);
 }
 
-BLYNK_CONNECTED() // runs every time Blynk connection is established
-{
-    Blynk.syncAll();
-}
-
-BLYNK_DISCONNECTED() // runs every time Blynk connection is established
-{
-
-}
-
-
-// serial debugging functions
+////
+/// serial debugging functions
+//
 int safeMode(String extra) {
     lcd->clear();
     lcd->home();
@@ -149,6 +165,7 @@ int safeMode(String extra) {
 }
 
 void serialDebug() {
+    DeviceAddress addr;
     dallas.requestTemperatures();
     Serial.println(dallas.getDeviceCount());
 //    Serial.println(dallas->getTempFByIndex(0));
@@ -168,25 +185,19 @@ void serialDebug() {
     }
 }
 
+
 void serialDebug2() {
-    Serial.print("probe 1 - ");
-    Serial.print(p1->getTemp());
-    Serial.print(" connected ");
-    Serial.println(p1->present());
-    Serial.print("probe 2 - ");
-    Serial.print(p2->getTemp());
-    Serial.print(" connected ");
-    Serial.println(p2->present());
-    Serial.print("probe 3 - ");
-    Serial.print(p3->getTemp());
-    Serial.print(" connected ");
-    Serial.println(p3->present());
+    for (uint8_t s=0; s < dallas.getDeviceCount(); s++)
+//    for (uint8_t s=0; s < sizeof(p); s++) 
+        if (p[s])
+            Serial.println("probe "+String(s)+" - connected "+String(p[s]->present())+" Temp "+String(p[s]->getTemp()));
+        else
+            Serial.println("probe "+String(s)+" - not defined");
 }
 
-
 // Alarm handlers
-unsigned long blkNextAlarm = 0;
-unsigned long buzNextAlarm = 0;
+size_t blkNextAlarm = 0;
+size_t buzNextAlarm = 0;
 
 void blynkNotify(char probe[255], char msg[255]) {
     if (Blynk.connected() && millis() > blkNextAlarm) {
@@ -202,9 +213,21 @@ void blynkNotify(char probe[255], char msg[255]) {
 
 void checkAlarmStates() {
     bool alarming = FALSE;
+    char subj[30], msg[128];
+    for (uint8_t s=0; s < dallas.getDeviceCount(); s++) {
+//    for (uint8_t s=0; s < sizeof(p); s++) {
+//        if (p[s]) {
+            if (p[s]->fetchAlarm()) {
+                sprintf(subj, "Probe %d", p[s]->getID());
+                sprintf(msg, "Kitchen: Probe %d is alarming", p[s]->getID());
+                if (Blynk.connected()) blynkNotify(subj, msg);
+                alarming = TRUE;
+            }
+//        }
+    }
+
+/* DELETE
     if (p1->fetchAlarm()) {
-         if (Blynk.connected()) blynkNotify("Probe 1", "Kitchen: Probe 1 is alarming");
-        alarming = TRUE;
     }
     if (p2->fetchAlarm()) {
         if (Blynk.connected()) blynkNotify("Probe 2", "Kitchen: Probe 2 is alarming");
@@ -214,6 +237,8 @@ void checkAlarmStates() {
         if (Blynk.connected()) blynkNotify("Probe 3", "Kitchen: Probe 3 is alarming");
         alarming = TRUE;
     }
+*/
+
     if (!alarming) {
         blkNextAlarm = 0;
         buzNextAlarm = 0;
@@ -222,53 +247,60 @@ void checkAlarmStates() {
 
 // init our probes
 void initProbes() {
-    p1 = new Probe(S0, DEVICE_DISCONNECTED_F);
-    p2 = new Probe(S1, DEVICE_DISCONNECTED_F);
-    p3 = new Probe(S2, DEVICE_DISCONNECTED_F);
+    for (uint8_t s=0; s < dallas.getDeviceCount(); s++) {
+        if (SA[s] == -1)
+            continue;
+        p[s] = new Probe(&dallas, s, SA[s]);
+    }
 }
 
 // poll the probes
-unsigned long nextUpdate = 0;
+size_t nextUpdate = 0;
 void pollProbes() {
     if (millis() > nextUpdate) {
         ATOMIC_BLOCK() {
             dallas.requestTemperatures();
-            delay(100);
-            p1->sample(dallas.getTempFByIndex(S0));
-            p2->sample(dallas.getTempFByIndex(S1));
-            p3->sample(dallas.getTempFByIndex(S2));
+            //delay(100);
+            for (uint8_t s=0; s < dallas.getDeviceCount(); s++)
+                p[s]->sample();
         }
         checkAlarmStates();
         //serialDebug();
-        //serialDebug2();
+        serialDebug2();
         nextUpdate = millis() + 500;
     }
 }
 
-//Timer probesTimer(1000, pollProbes);
-
 // LCD handlers
-void lcdProbeScreen(int id, Probe *p);
-
 bool forceRead = false;
+
+void lcdScanning(int id) {
+    char msg[15];
+    wifiMtr->print();
+
+    lcd->setCursor(0, 0);
+    sprintf(msg, "Scanning for");
+    lcd->print(msg);
+    lcd->setCursor(0, 1);
+    sprintf(msg, "probe %d...", id+1);
+    lcd->print(msg);
+}
 
 void lcdProbeScreen(int id, Probe *p) {
     char msg[15];
-    //lcd->clear();
-    LCDTimer->print();
-//    wifiMtr->print();
+    wifiMtr->print();
 
     lcd->setCursor(0, 0);
     if (forceRead || p->present()) {
-        sprintf(msg, "Probe %d %3.0f", id, p->getTemp());
+        sprintf(msg, "Probe %d %3.0f", id+1, p->getTemp());
         lcd->print(msg);
         lcd->write(DEGF);
         lcd->print("  ");
         lcd->setCursor(0, 1);
-        sprintf(msg, "L:%d", p->getLowAlarm());
+        sprintf(msg, "%d", p->getLowAlarm());
         lcd->print(msg);
         lcd->write(DEGF);
-        sprintf(msg, " H:%d", p->getHighAlarm());
+        sprintf(msg, "/%d", p->getHighAlarm());
         lcd->print(msg);
         lcd->write(DEGF);
         lcd->print("  ");
@@ -286,43 +318,29 @@ void lcdProbeScreen(int id, Probe *p) {
     }
 }
 
+/* DELETE
 void padStr(int chars, int len) {
     for (int x=chars; x<=len; x++) {
         lcd->print(" ");
     }
 }
+*/
 
-int probeScreen = 1;
-int clearScreen = FALSE;
-unsigned long nextWifi = 0;
+int probeScreen = 0;
+bool clearScreen = FALSE;
+size_t nextWifi = 0;
 void lcdReadOut() {
     if (clearScreen) {
         lcd->clear();
+        LCDTimer->print();
         clearScreen = FALSE;
     }
-    switch (probeScreen) {
-        case (1):
-            if (forceRead || p1->present())
-                lcdProbeScreen(1, p1);
-            else
-                LCDTimer->reset();
-            break;
-        case (2):
-            if (forceRead || p2->present())
-                lcdProbeScreen(2, p2);
-            else
-                LCDTimer->reset();
-            break;
-        case (3):
-            if (forceRead || p3->present())
-                lcdProbeScreen(3, p3);
-            else
-                LCDTimer->reset();
-            break;
-        case (0):
-            lcd->setCursor(0, 0);
-            lcd->print("Almost Done...");
-            break;
+
+    if (forceRead || p[probeScreen]->present()) {
+        lcdProbeScreen(probeScreen, p[probeScreen]);
+    } else {
+        lcdScanning(probeScreen);
+        LCDTimer->reset();
     }
 }
 
@@ -331,13 +349,12 @@ void lcdMeters() {
 
         // keep to screen 1
         //probeScreen = 1;
-
-        if (probeScreen >= 3) {
-            probeScreen = 1;
-        } else
-            probeScreen++;
+        probeScreen++;
         clearScreen = TRUE;
 
+        if (probeScreen == dallas.getDeviceCount()) {
+            probeScreen = 0;
+        }
     }
     if (millis() > nextWifi) {
         wifiMtr->wifiStrength();
@@ -352,6 +369,8 @@ BLYNK_WRITE(V5)
         LCDTimer->reset();
 }
 
+
+/* FIX
 BLYNK_WRITE(S1B_LA_I)
 {
     p1->setLowAlarm(param.asInt());
@@ -396,6 +415,7 @@ BLYNK_WRITE(S3B_INDEX)
 {
     p3->setProbeIndex(param.asInt());
 }
+*/
 
 BLYNK_WRITE(V4)
 {
@@ -410,7 +430,6 @@ Timer lcdTimer(500, lcdReadOut);
 Timer lcdMeterTimer(150, lcdMeters);
 
 // blynk updates
-//void blynkUpdateProbe(Probe *p, int pin);
 void blynkUpdateProbe(Probe *p, int pin) {
     if ( p->present() )
         Blynk.virtualWrite(pin, p->getTemp());
@@ -418,41 +437,32 @@ void blynkUpdateProbe(Probe *p, int pin) {
         Blynk.virtualWrite(pin, "No Probe");
 
     if ( p->lowAlarming() )
-        Blynk.virtualWrite(pin+10, 255);
+        Blynk.virtualWrite(pin+(1*MAX_DEVICES), 255);
     else
-        Blynk.virtualWrite(pin+10, 0);
+        Blynk.virtualWrite(pin+(1*MAX_DEVICES), 0);
 
     if ( p->highAlarming() )
-        Blynk.virtualWrite(pin+20, 255);
+        Blynk.virtualWrite(pin+(2*MAX_DEVICES), 255);
     else
-        Blynk.virtualWrite(pin+20, 0);
+        Blynk.virtualWrite(pin+(2*MAX_DEVICES), 0);
 
     if ( p->present() )
-        Blynk.virtualWrite(pin+30, 255);
+        Blynk.virtualWrite(pin+(3*MAX_DEVICES), 255);
     else
-        Blynk.virtualWrite(pin+30, 0);
+        Blynk.virtualWrite(pin+(3*MAX_DEVICES), 0);
 }
 
 
-//bool blynkUpdating = false;
-
-unsigned long nextBlynkUpdate = 0;
+size_t nextBlynkUpdate = 0;
 void blynkUpdate() {
     if ( Blynk.connected() && nextBlynkUpdate != nextUpdate) {
-        blynkUpdateProbe(p1, S1B);
-        blynkUpdateProbe(p2, S2B);
-        blynkUpdateProbe(p3, S3B);
+        for (uint8_t s=0; s < dallas.getDeviceCount(); s++) 
+//        for (uint8_t s=0; s < sizeof(p); s++) 
+            if (p[s])
+                blynkUpdateProbe(p[s], BLYNK_START_PIN + s);
         nextBlynkUpdate = nextUpdate;
     }
 }
-
-// Blynk run timer/thread
-//void runBlynk() {
-//    Blynk.run();
-//}
-
-//Timer blynkTimer(1000, blynkUpdate);
-//Timer blynkRunTimer(200, runBlynk);
 
 // OTA flash handler
 void OTAFlash() {
@@ -461,8 +471,6 @@ void OTAFlash() {
         //blynkTimer.stop();
         lcdTimer.stop();
         lcdMeterTimer.stop();
-        //probesTimer.stop();
-        //blynkRunTimer.stop();
         lcd->clear();
         lcd->home();
         lcd->print("OTA Flash Mode");
@@ -472,7 +480,6 @@ void OTAFlash() {
 }
 
 void setup() {
-
     // init LCD    
     lcd = new LiquidCrystal(LCDPIN);
     lcd->begin(20, 4);
@@ -494,14 +501,15 @@ void setup() {
     lcd->setCursor(14, 1);
     lcd->print("d");
 
-    //dallas = new DallasTemperature(&oneWire);
     dallas.begin();
+
     lcd->setCursor(14, 1);
     lcd->print(" ");
 
     lcd->setCursor(14, 1);
     lcd->print("r");
-    dallas.setResolution(12);
+    //dallas.setResolution(10); // Hack to get faster read times from the MAX31850.  still reads 12 bit rez.  it's about ~7 times faster.
+    dallas.setResolution(9); // Hack to get faster read times from the MAX31850.  still reads 12 bit rez.  it's about ~7 times faster.  9 bit reads a little faster, but is under spec by ~5ms
     lcd->setCursor(14, 1);
     lcd->print(" ");
 
@@ -511,52 +519,26 @@ void setup() {
     lcd->setCursor(14, 1);
     lcd->print(" ");
 
-    // start https://build.particle.io/build/585ecd976d38419b0f0004aa#flashreading probes
-    //lcd->setCursor(14, 1);
-    //lcd->print("t");
-    //probesTimer.start();
-    //lcd->setCursor(14, 1);
-    //lcd->print(" ");
-
     // stat outputting to LCD
     wifiMtr = new WifiMeter(lcd, WIFIICON, 15, 0);
     LCDTimer = new LCDTimerAnim(lcd, TIMER, 15, 1);
     lcd->clear();
     lcdTimer.start();
-    //lcdMeterTimer.start();
+    lcdMeterTimer.start();
     Time.zone(-4);                   // Eastern Time Zone
     Particle.function("safeMode", safeMode);
-
-    // start up Blynk
-    //lcd->setCursor(14, 1);
-    //lcd->print("b");
 
     // setup output for buzzer
     pinMode(BUZZER, OUTPUT);
 
+    // start up Blynk
     pinMode(D7, OUTPUT);
     digitalWrite(D7, HIGH);
     Blynk.begin(auth);
-    //blynkRunTimer.start(); 
-    //blynkTimer.start();
-    //lcd->setCursor(14, 1);
-    //lcd->print(" ");
-
-    // set up the LCD's number of rows and columns:
-    // Print a message to the LCD.
-    //lcd.print("hello, world!");
-    //lcd->clear();
-    //lcd->home();
 }
 
-
 void loop() {
-    //if (Blynk.connected())
-
-//    pollProbes();
-    //lcdReadOut();
-
-    if (Blynk.connected()) 
+    pollProbes();
 
     if (Blynk.connected()) {
         digitalWrite(D7, LOW);
@@ -566,17 +548,4 @@ void loop() {
 
     Blynk.run();
 
-
-    //serialDebug();
-
-    // set the cursor to column 0, line 1
-    // (note: line 1 is the second row, since counting begins with 0):
-    //lcd->setCursor(8, 1);
-    // print the number of seconds since reset:
-    //lcd->print(millis()/1000);
-    
-    //lcd.setCursor(15, 1);
-    //lcd.write(byte(0));
 }
-
-
